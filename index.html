@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AEOLUS/01 - Umbrella Wind Laboratory</title>
+  <script async src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    :root {
+      --bg: #05070b; --panel: rgba(9,14,21,.82); --line: rgba(255,255,255,.1);
+      --line-hi: rgba(255,255,255,.18); --text: #e8f0f8; --muted: #8190a4;
+      --cyan: #67e8f9; --green: #16a34a; --yellow: #eab308; --red: #ef4444;
+      --mono: "JetBrains Mono", ui-monospace, monospace; --display: "Space Grotesk", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:var(--bg); color:var(--text); font-family:var(--display); }
+    button, input, select { font:inherit; }
+    #viewport, #viewport canvas { position:fixed; inset:0; width:100%; height:100%; display:block; }
+    .vignette { position:fixed; inset:0; pointer-events:none; background:radial-gradient(circle at 50% 43%,transparent 43%,rgba(2,4,8,.66) 100%); }
+    .brand { position:fixed; z-index:5; top:22px; left:24px; pointer-events:none; }
+    .brand h1 { margin:0; font-size:20px; letter-spacing:.12em; }
+    .brand h1 span { color:var(--cyan); }
+    .brand p { margin:4px 0 0; color:var(--muted); font:10px var(--mono); letter-spacing:.22em; }
+    .telemetry { position:fixed; z-index:5; left:24px; bottom:22px; width:310px; display:grid; gap:9px; pointer-events:none; }
+    .panel { padding:13px 15px; border:1px solid var(--line); border-radius:13px; background:var(--panel); backdrop-filter:blur(14px); box-shadow:0 18px 50px rgba(0,0,0,.25); }
+    .label { color:var(--muted); font:600 9px var(--mono); letter-spacing:.18em; text-transform:uppercase; }
+    .value { margin-top:5px; font:700 29px/1 var(--mono); }
+    .value small { color:var(--muted); font-size:11px; font-weight:500; }
+    .row { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+    .damage { padding:4px 8px; border:1px solid var(--green); border-radius:20px; color:var(--green); font:700 10px var(--mono); }
+    .gradient { height:5px; margin-top:10px; border-radius:4px; background:linear-gradient(90deg,#16a34a,#eab308,#ef4444); }
+    .bar { height:4px; margin-top:9px; border-radius:4px; background:rgba(255,255,255,.08); overflow:hidden; }
+    .bar i { display:block; width:0; height:100%; background:var(--cyan); transition:width .1s linear; }
+    .status { display:flex; gap:8px; align-items:center; margin-top:10px; color:var(--text); font:10px var(--mono); }
+    .dot { width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 9px var(--green); }
+    .dot.warn { background:var(--yellow); box-shadow:0 0 9px var(--yellow); }
+    .dot.fail { background:var(--red); box-shadow:0 0 9px var(--red); }
+    .ribs { display:flex; gap:6px; margin-top:10px; }
+    .ribs b { width:13px; height:13px; border:1px solid rgba(103,232,249,.55); border-radius:4px; background:rgba(103,232,249,.2); }
+    .ribs b.fail { border-color:var(--red); background:rgba(239,68,68,.3); }
+    .ribs span { margin-left:auto; color:var(--muted); font:10px var(--mono); }
+    .log { min-height:30px; margin-top:8px; color:var(--muted); font:9px/1.6 var(--mono); }
+    .log .critical { color:#fda4af; }
+    #pane { position:fixed; z-index:10; top:20px; right:22px; width:300px; pointer-events:auto; }
+    #pane, #pane * { pointer-events:auto; }
+    #pane .tp-rotv { border:1px solid var(--line)!important; border-radius:13px!important; background:rgba(9,14,21,.88)!important; backdrop-filter:blur(14px); }
+    .footer { position:fixed; z-index:5; right:24px; bottom:18px; color:var(--muted); font:9px var(--mono); letter-spacing:.1em; pointer-events:none; }
+    #toastHost { position:fixed; z-index:80; top:88px; left:50%; transform:translateX(-50%); display:grid; gap:8px; pointer-events:none; }
+    .toast { padding:10px 16px; border:1px solid var(--line-hi); border-radius:10px; background:rgba(8,13,20,.94); color:var(--text); font:10px var(--mono); animation:toast-in .25s ease-out; }
+    .toast.bad { color:#fecdd3; border-color:rgba(239,68,68,.55); }
+    @keyframes toast-in { from { opacity:0; transform:translateY(-8px); } }
+    #startup { position:fixed; z-index:100; inset:0; display:grid; place-items:center; padding:18px; background:rgba(3,5,9,.72); backdrop-filter:blur(12px); transition:opacity .35s; }
+    #startup.hidden { opacity:0; pointer-events:none; }
+    .dialog { width:min(500px,94vw); padding:28px 30px; border:1px solid var(--line-hi); border-radius:19px; background:linear-gradient(155deg,rgba(16,24,36,.98),rgba(7,11,17,.98)); box-shadow:0 35px 100px rgba(0,0,0,.55); }
+    .dialog h2 { margin:0; font-size:20px; letter-spacing:.08em; }
+    .dialog .eyebrow { margin-bottom:6px; color:var(--cyan); font:9px var(--mono); letter-spacing:.25em; }
+    .dialog p { color:var(--muted); font-size:12px; line-height:1.6; }
+    .slider-row { margin-top:18px; }
+    .slider-row label { display:flex; justify-content:space-between; color:var(--muted); font:600 10px var(--mono); letter-spacing:.14em; }
+    .slider-row output { color:var(--cyan); }
+    input[type="range"] { width:100%; margin-top:10px; accent-color:var(--cyan); }
+    #startBtn { width:100%; margin-top:24px; padding:14px 16px; border:0; border-radius:11px; color:#04212a; background:linear-gradient(90deg,#0891b2,#67e8f9); font:700 12px var(--mono); letter-spacing:.16em; cursor:pointer; }
+    #startBtn:hover { filter:brightness(1.1); box-shadow:0 0 28px rgba(34,211,238,.25); }
+    .spec { margin-top:13px; text-align:center; color:#64748b; font:8px/1.7 var(--mono); }
+    @media (max-width:760px) {
+      #pane { width:250px; transform:scale(.86); transform-origin:top right; right:10px; top:10px; }
+      .telemetry { left:12px; bottom:10px; width:255px; }
+      .footer { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="viewport"></div>
+  <div class="vignette"></div>
+  <header class="brand"><h1>AEOLUS<span>/01</span></h1><p>STRUCTURAL WIND LAB</p></header>
+  <aside class="telemetry">
+    <section class="panel">
+      <div class="label">Relative wind vector</div>
+      <div class="value"><span id="windRead">0.0</span><small> m/s</small></div>
+      <div class="bar"><i id="windBar"></i></div>
+    </section>
+    <section class="panel">
+      <div class="label">PP living hinge stress / 33 MPa</div>
+      <div class="row"><div class="value"><span id="stressRead">0.00</span><small> MPa</small></div><div class="damage" id="damageRead">1.0 / 10</div></div>
+      <div class="gradient"></div>
+    </section>
+    <section class="panel">
+      <div class="label">Rib integrity</div>
+      <div class="ribs" id="ribDots"></div>
+      <div class="status"><span class="dot" id="stateDot"></span><span id="stateRead">READY</span></div>
+      <div class="log" id="eventLog">Native solver ready. No engine download required.</div>
+    </section>
+  </aside>
+  <div id="pane"></div>
+  <div class="footer"><span id="fpsRead">-- FPS</span> &nbsp;|&nbsp; <span id="triRead">-- TRI</span></div>
+  <div id="toastHost"></div>
+  <div id="startup">
+    <div class="dialog">
+      <div class="eyebrow">STARTUP ATTITUDE</div>
+      <h2>SHAFT CONFIGURATION</h2>
+      <p>The 650 mm shaft is pinned at world origin. Choose its initial pitch and yaw; the mechanism is generated directly in its mathematically valid closed pose.</p>
+      <div class="slider-row"><label for="pitchInput"><span>PITCH</span><output id="pitchOut">15 deg</output></label><input id="pitchInput" type="range" min="-65" max="65" value="15" step="1"></div>
+      <div class="slider-row"><label for="yawInput"><span>YAW</span><output id="yawOut">0 deg</output></label><input id="yawInput" type="range" min="0" max="360" value="0" step="1"></div>
+      <button id="startBtn" type="button">INITIALIZE SIMULATION</button>
+      <div class="spec">NATIVE FIXED-STEP SOLVER - 1/60 S - 10 SUBSTEPS<br>BACKGROUND CDN MODULES NEVER GATE STARTUP</div>
+    </div>
+  </div>
+
+  <script>
+    window.__AEOLUS_READY = false;
+    window.addEventListener('error', function (event) {
+      var button = document.getElementById('startBtn');
+      if (button && !window.__AEOLUS_READY) button.textContent = 'MODULE ERROR - ' + String(event.message || 'CHECK NETWORK');
+    });
+    window.addEventListener('unhandledrejection', function (event) {
+      var button = document.getElementById('startBtn');
+      if (button && !window.__AEOLUS_READY) button.textContent = 'MODULE ERROR - CHECK CONSOLE';
+    });
+    setTimeout(function () {
+      var button = document.getElementById('startBtn');
+      if (button && !window.__AEOLUS_READY) button.textContent = 'CDN TIMEOUT - RELOAD OR CHECK CONNECTION';
+    }, 10000);
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { Pane } from 'https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js';
+
+    window.__AEOLUS_READY = true;
+
+    const $ = id => document.getElementById(id);
+    const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+    const lerp = (a,b,t) => a+(b-a)*t;
+    const smooth = t => t*t*(3-2*t);
+    const DEG = Math.PI/180;
+    const FIXED_DT = 1/60;
+    const SUBSTEPS = 10;
+
+    const CFG = Object.freeze({
+      ribs:8, shaftLength:.650, shaftRadius:.005, handleLength:.120, handleRadius:.013, ferruleY:.650,
+      runnerYClosed:.120, runnerYMechanicalOpen:.500, runnerStroke:.380, runnerInnerRadius:.0052, runnerOuterRadius:.009, runnerHeight:.035,
+      ribLength:.550, ribWidth:.003, ribHeight:.002, ribMountDistance:.230,
+      /* Real umbrella ribs are CAMBERED (a gentle arc), not straight. Without
+         camber the canopy is a flat cone; with it you get the true dome. */
+      ribCamber:.055,
+      /* Panels billow outward between the ribs - this is what makes the
+         gores read as convex drums instead of sagging flat sheets. */
+      panelBulge:.016,
+      ribMountS:.230/.550,
+      stretcherLength:.320, stretcherWidth:.0025, stretcherHeight:.0015,
+      /* Real umbrellas: arch is ~0.25-0.30 x radius. 220 mm on a 520 mm radius
+         was 0.42, which is what produced that spike instead of a dome. */
+      canopyRadius:.520, canopyArch:.150, nylonDensity:1140, canopyThickness:.00018,
+      aluminumDensity:2700, airDensity:1.225, dragCoefficient:1.18, warmupFrames:120, linkageK:24
+    });
+    const PP = {
+      E:1.3e9, yieldStress:33e6, density:900, t_mm:.35, L_mm:1.2, W_mm:8, restAngle:180,
+      fillet_mm:.5, chamfer_mm:.25, t:.00035, L:.0012, W:.008, I:0, K:0, c:0, alpha:.05, formedStrainFraction:.025,
+      // Structural values above are the true production dimensions. A 1.2 mm
+      // membrane is sub-pixel on a 650 mm assembly, so all 24 joints render at
+      // the specified readable 0.8 x 3.0 x 15.0 mm envelope.
+      renderT_mm:0.8, renderL_mm:3.0, renderW_mm:15.0, rt:.0008, rl:.003, rw:.015
+    };
+    /* Woven ripstop nylon membrane: stiffness derived from real moduli. */
+    const FABRIC = { E:2.5e9, thickness:.00018, poisson:.35, arealDensity:.07, damping:15.0, preStrain:.04, cpBack:-0.45, iterations:6 };
+    FABRIC.kStretch = FABRIC.E*FABRIC.thickness/(1-FABRIC.poisson*FABRIC.poisson);
+    FABRIC.gShear   = FABRIC.E/(2*(1+FABRIC.poisson));
+    FABRIC.kShear   = .25*FABRIC.kStretch;
+    FABRIC.kBend    = .04*FABRIC.kStretch;
+    const spring = { L0:.420, compressedLength:.040, k:120, c:8.5, mass:.12 };
+    const ui = { windSpeed:12, windAzimuth:0, windElevation:0, gustiness:.25, particleCount:850, view:'standard' };
+    const sim = {
+      built:false, running:true, open:false, yRunner:CFG.runnerYClosed, vRunner:0, springForce:45.6, deployment:0,
+      thetaLaw:0, thetaStretcherLaw:0, hingeTopDeg:8, hingeRunnerDeg:12, hingeKnuckleDeg:160,
+      maxStressMPa:0, damageIndex:1, warmup:CFG.warmupFrames, broken:0, status:'READY',
+      backend:'Native analytic', substeps:SUBSTEPS, ribs:[], debris:[], qTilt:new THREE.Quaternion(), wind:new THREE.Vector3(), time:0, frame:0
+    };
+    function updatePP(){ PP.t=PP.t_mm/1000; PP.L=PP.L_mm/1000; PP.W=PP.W_mm/1000; PP.rt=PP.renderT_mm/1000; PP.rl=PP.renderL_mm/1000; PP.rw=PP.renderW_mm/1000; PP.I=PP.W*Math.pow(PP.t,3)/12; PP.K=PP.E*PP.I/PP.L; PP.c=PP.K*.005; sim.hingeK=PP.K; sim.hingeI=PP.I*1e12; }
+    updatePP();
+
+    /* The supplied a=230 mm, b=320 mm and y=500 mm produce 113.03 deg,
+       not 82 deg. The sleeve retains a 380 mm available stroke, while the
+       physically consistent canopy lock is derived from theta=82 deg. */
+    function clampedD(y){ const a=CFG.ribMountDistance,b=CFG.stretcherLength; return clamp(CFG.ferruleY-y,Math.abs(a-b)+.001,a+b-.001); }
+    function linkageAngles(y){
+      const a=CFG.ribMountDistance,b=CFG.stretcherLength,d=clampedD(y);
+      return { rib:Math.acos(clamp((d*d+a*a-b*b)/(2*d*a),-1,1)), stretcher:Math.acos(clamp((d*d+b*b-a*a)/(2*d*b),-1,1)), d };
+    }
+    function yForRibAngle(theta){ const a=CFG.ribMountDistance,b=CFG.stretcherLength,c=Math.cos(theta); const d=a*c+Math.sqrt(Math.max(0,a*a*c*c-a*a+b*b)); return CFG.ferruleY-d; }
+    const Y_GEOMETRIC_LOCK=clamp(yForRibAngle(82*DEG),CFG.runnerYClosed,CFG.runnerYMechanicalOpen);
+    const CLOSED_ANGLES=linkageAngles(CFG.runnerYClosed);
+
+    const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight); renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05; $('viewport').appendChild(renderer.domElement);
+    const scene=new THREE.Scene(); scene.background=new THREE.Color(0x05070b); scene.fog=new THREE.Fog(0x05070b,3,8);
+    const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.01,40); camera.position.set(1.35,.95,1.55);
+    const controls=new OrbitControls(camera,renderer.domElement); controls.target.set(0,.42,0); controls.enableDamping=true; controls.dampingFactor=.06; controls.minDistance=.24; controls.maxDistance=7; controls.maxPolarAngle=Math.PI*.72;
+    scene.add(new THREE.HemisphereLight(0x9fb8db,0x07090d,.75));
+    const key=new THREE.DirectionalLight(0xfff2df,2.4); key.position.set(1.5,2.2,1.1); key.castShadow=true; key.shadow.mapSize.set(2048,2048); key.shadow.camera.left=key.shadow.camera.bottom=-1.2; key.shadow.camera.right=key.shadow.camera.top=1.2; key.shadow.camera.near=.2; key.shadow.camera.far=6; scene.add(key);
+    const rim=new THREE.PointLight(0x22d3ee,2.5,4,2); rim.position.set(-1.2,.9,-.8); scene.add(rim);
+    const ground=new THREE.Mesh(new THREE.CircleGeometry(8,80),new THREE.MeshStandardMaterial({color:0x090d13,roughness:.96,metalness:.06})); ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+    const grid=new THREE.GridHelper(8,80,0x213246,0x101927); grid.material.transparent=true; grid.material.opacity=.48; scene.add(grid);
+
+    /* WIND SOURCE INDICATOR: sits upstream and points downwind, so it always
+       shows where the wind comes FROM and the direction it blows. */
+    const windArrow=new THREE.Group();
+    const arrowMat=new THREE.MeshBasicMaterial({color:0x67e8f9,transparent:true,opacity:.95});
+    const arrowShaftMesh=new THREE.Mesh(new THREE.CylinderGeometry(.005,.005,1,12),arrowMat);
+    arrowShaftMesh.geometry.translate(0,.5,0);arrowShaftMesh.geometry.rotateX(Math.PI/2);
+    const arrowHeadMesh=new THREE.Mesh(new THREE.ConeGeometry(.02,.06,16),arrowMat);
+    arrowHeadMesh.geometry.rotateX(Math.PI/2);
+    const arrowRing=new THREE.Mesh(new THREE.TorusGeometry(.045,.003,8,32),new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:.5}));
+    windArrow.add(arrowShaftMesh,arrowHeadMesh,arrowRing);
+    scene.add(windArrow);
+    const windOriginPoint=new THREE.Vector3(),windAimPoint=new THREE.Vector3(0,.42,0);
+    function updateWindArrow(){
+      const dir=windDirection(tmpA),speed=sim.wind.length(),reach=.42+Math.min(.45,speed*.011);
+      windOriginPoint.copy(windAimPoint).addScaledVector(dir,-(reach+.34));
+      windArrow.position.copy(windOriginPoint);
+      windArrow.quaternion.setFromUnitVectors(axisZ,dir);
+      arrowShaftMesh.scale.set(1,1,reach);
+      arrowHeadMesh.position.set(0,0,reach);
+      const hot=clamp(speed/60,0,1);
+      arrowMat.color.setRGB(.40+.60*hot,.91-.55*hot,1-.72*hot);
+    }
+
+    let umbrella=null,canopy=null,cloth=null;
+    const visualRegistry=[];
+    const axisZ=new THREE.Vector3(0,0,1);
+    const tmpA=new THREE.Vector3(),tmpB=new THREE.Vector3(),tmpC=new THREE.Vector3(),tmpD=new THREE.Vector3(),tmpE=new THREE.Vector3(),tmpQ=new THREE.Quaternion(),midRadial=new THREE.Vector3();
+    function localPoint(x,y,z,out=new THREE.Vector3()){ return out.set(x,y,z).applyQuaternion(sim.qTilt); }
+    function localDir(x,y,z,out=new THREE.Vector3()){ return out.set(x,y,z).applyQuaternion(sim.qTilt).normalize(); }
+    function disposeObject(root){ root.traverse(o=>{ if(o.geometry){ if(o.geometry.disposeBoundsTree)o.geometry.disposeBoundsTree(); o.geometry.dispose(); } if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose()); }); }
+
+    const rampStops=[[22,163,74],[234,179,8],[239,68,68]];
+    function rampRGB(t){ const x=clamp(t,0,1)*2,i=Math.min(1,Math.floor(x)),f=x-i; return rampStops[i].map((v,k)=>Math.round(lerp(v,rampStops[i+1][k],f))); }
+    const lutBytes=new Uint8Array(1024); const stressLUT=new THREE.DataTexture(lutBytes,256,1,THREE.RGBAFormat); stressLUT.minFilter=stressLUT.magFilter=THREE.LinearFilter;
+    function refreshLUT(chromaLib=null){
+      const scale=chromaLib?chromaLib.scale(['#16a34a','#eab308','#ef4444']).mode('lrgb'):null;
+      for(let i=0;i<256;i++){ const c=scale?scale(i/255).rgb():rampRGB(i/255); lutBytes[i*4]=c[0];lutBytes[i*4+1]=c[1];lutBytes[i*4+2]=c[2];lutBytes[i*4+3]=255; } stressLUT.needsUpdate=true;
+    }
+    refreshLUT();
+    function stressMaterial(){ return new THREE.ShaderMaterial({uniforms:{uLUT:{value:stressLUT},uLight:{value:new THREE.Vector3(.5,.8,.35).normalize()}},vertexShader:`attribute float aStress;varying float vStress;varying vec3 vNormal;void main(){vStress=aStress;vNormal=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,fragmentShader:`uniform sampler2D uLUT;uniform vec3 uLight;varying float vStress;varying vec3 vNormal;void main(){vec3 c=texture2D(uLUT,vec2(clamp(vStress,0.0,1.0),.5)).rgb;float l=.3+.8*abs(dot(normalize(vNormal),uLight));gl_FragColor=vec4(c*l,1.0);}`,side:THREE.DoubleSide}); }
+    function registerVisual(mesh,standard,stress=stressMaterial()){ const count=mesh.geometry.attributes.position.count; if(!mesh.geometry.attributes.aStress)mesh.geometry.setAttribute('aStress',new THREE.BufferAttribute(new Float32Array(count),1)); visualRegistry.push({mesh,standard,stress}); mesh.material=ui.view==='stress'?stress:standard; umbrella.add(mesh); return mesh; }
+    function fillStress(mesh,value){ const a=mesh.geometry.attributes.aStress;if(!a)return;a.array.fill(clamp(value,0,1));a.needsUpdate=true; }
+    function setView(mode){ ui.view=mode; for(const item of visualRegistry){item.standard.wireframe=mode==='wireframe';item.mesh.material=mode==='stress'?item.stress:item.standard;} if(canopy){canopy.userData.standard.wireframe=mode==='wireframe';canopy.material=mode==='stress'?canopy.userData.stress:canopy.userData.standard;} }
+
+    /* Six length segments create five internal hinge rings. Positions are
+       initialized at their true dimensions before the first render. */
+    const HINGE_SEGMENTS=6,HINGE_WIDTH_SEGMENTS=2;
+    function createHingeGeometry(){
+      const rows=HINGE_SEGMENTS+1,cols=HINGE_WIDTH_SEGMENTS+1,shell=rows*cols,count=shell*2;
+      const positions=new Float32Array(count*3),uAttr=new Float32Array(count),wAttr=new Float32Array(count),sAttr=new Float32Array(count),indices=[];
+      const id=(s,r,c)=>s*shell+r*cols+c;
+      for(let s=0;s<2;s++)for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const k=id(s,r,c),u=r/HINGE_SEGMENTS,w=c/HINGE_WIDTH_SEGMENTS-.5;positions[k*3]=w*PP.rw;positions[k*3+1]=(s?-.5:.5)*PP.rt;positions[k*3+2]=u*PP.rl;uAttr[k]=u;wAttr[k]=w;sAttr[k]=s?-1:1;}
+      for(let r=0;r<HINGE_SEGMENTS;r++){
+        for(let c=0;c<HINGE_WIDTH_SEGMENTS;c++){const a=id(0,r,c),b=id(0,r+1,c),cc=id(0,r+1,c+1),d=id(0,r,c+1);indices.push(a,b,cc,a,cc,d);const ai=id(1,r,c),bi=id(1,r+1,c),ci=id(1,r+1,c+1),di=id(1,r,c+1);indices.push(ai,ci,bi,ai,di,ci);}
+        for(const c of [0,HINGE_WIDTH_SEGMENTS]){const a=id(0,r,c),b=id(0,r+1,c),bi=id(1,r+1,c),ai=id(1,r,c);if(c===0)indices.push(a,bi,b,a,ai,bi);else indices.push(a,b,bi,a,bi,ai);}
+      }
+      for(const r of [0,HINGE_SEGMENTS])for(let c=0;c<HINGE_WIDTH_SEGMENTS;c++){const a=id(0,r,c),b=id(0,r,c+1),bi=id(1,r,c+1),ai=id(1,r,c);if(r===0)indices.push(a,bi,b,a,ai,bi);else indices.push(a,b,bi,a,bi,ai);}
+      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(positions,3));g.setAttribute('hingeU',new THREE.BufferAttribute(uAttr,1));g.setAttribute('hingeW',new THREE.BufferAttribute(wAttr,1));g.setAttribute('hingeSide',new THREE.BufferAttribute(sAttr,1));g.setIndex(indices);g.computeVertexNormals();g.boundingSphere=new THREE.Sphere(new THREE.Vector3(),.03);return g;
+    }
+    const hingeBasis=new THREE.Matrix4(),hingeX=new THREE.Vector3(),hingeY=new THREE.Vector3(),hingeZ=new THREE.Vector3(),hingeDesired=new THREE.Vector3(),hingeEnd=new THREE.Vector3(),hingeError=new THREE.Vector3();
+    function deformHinge(mesh,anchorA,anchorB,tangentA,widthAxis,bendAngle){
+      const g=mesh.geometry,p=g.attributes.position.array,us=g.attributes.hingeU.array,ws=g.attributes.hingeW.array,sides=g.attributes.hingeSide.array;
+      const delta=clamp(Math.abs(bendAngle),.00001,Math.PI*.98),sign=bendAngle<0?-1:1;
+      hingeZ.copy(tangentA).normalize();hingeX.copy(widthAxis).addScaledVector(hingeZ,-widthAxis.dot(hingeZ)).normalize();hingeY.crossVectors(hingeZ,hingeX).normalize().multiplyScalar(sign);
+      hingeBasis.makeBasis(hingeX,hingeY,hingeZ);mesh.position.copy(anchorA);mesh.quaternion.setFromRotationMatrix(hingeBasis);mesh.scale.set(1,1,1);
+      hingeDesired.copy(anchorB).sub(anchorA);hingeDesired.set(hingeDesired.dot(hingeX),hingeDesired.dot(hingeY),hingeDesired.dot(hingeZ));
+      const radius=PP.rl/delta;hingeEnd.set(0,radius*(1-Math.cos(delta)),radius*Math.sin(delta));hingeError.subVectors(hingeDesired,hingeEnd);
+      for(let i=0;i<us.length;i++){const u=us[i],a=u*delta,ny=Math.cos(a),nz=-Math.sin(a);p[i*3]=ws[i]*PP.rw+hingeError.x*u;p[i*3+1]=radius*(1-Math.cos(a))+hingeError.y*u+sides[i]*PP.rt*.5*ny;p[i*3+2]=radius*Math.sin(a)+hingeError.z*u+sides[i]*PP.rt*.5*nz;}
+      g.attributes.position.needsUpdate=true;g.computeVertexNormals();g.boundingSphere.radius=.04;
+    }
+    function hingeEndpoints(joint,tangentA,tangentB,outA,outB){const avg=tmpE.copy(tangentA).add(tangentB);if(avg.lengthSq()<1e-8)avg.copy(tangentA);avg.normalize();const bend=Math.acos(clamp(tangentA.dot(tangentB),-1,1)),chord=bend>1e-5?2*(PP.rl/bend)*Math.sin(bend*.5):PP.rl;outA.copy(joint).addScaledVector(avg,-chord*.5);outB.copy(joint).addScaledVector(avg,chord*.5);}
+
+    function buildUmbrella(pitch,yaw){
+      if(umbrella){scene.remove(umbrella);disposeObject(umbrella);}
+      for(const piece of sim.debris){scene.remove(piece.mesh);disposeObject(piece.mesh);}
+      sim.debris.length=0;visualRegistry.length=0;sim.ribs.length=0;
+      sim.qTilt.setFromEuler(new THREE.Euler(pitch*DEG,yaw*DEG,0,'YXZ'));sim.open=false;sim.yRunner=CFG.runnerYClosed;sim.vRunner=0;sim.deployment=0;sim.warmup=CFG.warmupFrames;sim.broken=0;sim.time=0;sim.frame=0;sim.built=true;
+      umbrella=new THREE.Group();scene.add(umbrella);
+      const metal=new THREE.MeshStandardMaterial({color:0xaab5c1,roughness:.32,metalness:.88}),ribMat=new THREE.MeshStandardMaterial({color:0xd1d8e0,roughness:.3,metalness:.83}),strMat=new THREE.MeshStandardMaterial({color:0x8f9aa8,roughness:.36,metalness:.8}),handleMat=new THREE.MeshStandardMaterial({color:0x251c24,roughness:.7,metalness:.08}),runnerMat=new THREE.MeshStandardMaterial({color:0x0891b2,roughness:.32,metalness:.55,emissive:0x073642,emissiveIntensity:.7}),ppMat=new THREE.MeshStandardMaterial({color:0xf0ad2f,roughness:.5,metalness:.02,side:THREE.DoubleSide});
+      const fixed=new THREE.Group();fixed.quaternion.copy(sim.qTilt);umbrella.add(fixed);
+      const shaft=new THREE.Mesh(new THREE.CylinderGeometry(CFG.shaftRadius,CFG.shaftRadius,CFG.shaftLength,18),metal);shaft.position.y=CFG.shaftLength*.5;shaft.castShadow=true;fixed.add(shaft);
+      const handle=new THREE.Mesh(new THREE.CylinderGeometry(CFG.handleRadius,CFG.handleRadius*.93,CFG.handleLength,22),handleMat);handle.position.y=CFG.handleLength*.5;handle.castShadow=true;fixed.add(handle);
+      const ferrule=new THREE.Mesh(new THREE.CylinderGeometry(.0115,.0125,.022,22),metal);ferrule.position.y=CFG.ferruleY;ferrule.castShadow=true;fixed.add(ferrule);
+      sim.runnerMesh=registerVisual(new THREE.Mesh(new THREE.CylinderGeometry(CFG.runnerOuterRadius,CFG.runnerOuterRadius,CFG.runnerHeight,22),runnerMat),runnerMat);sim.runnerMesh.castShadow=true;
+      const strGeo=new THREE.BoxGeometry(CFG.stretcherWidth,CFG.stretcherHeight,CFG.stretcherLength);strGeo.translate(0,0,CFG.stretcherLength*.5);
+      for(let i=0;i<CFG.ribs;i++){
+        const az=i*Math.PI*2/CFG.ribs,radial=localDir(Math.cos(az),0,Math.sin(az)),tangent=localDir(-Math.sin(az),0,Math.cos(az)),down=localDir(0,-1,0),upW=localDir(0,1,0),hinge=localPoint(0,CFG.ferruleY,0);
+        const ribMesh=registerVisual(new THREE.Mesh(createRibbonGeometry(),ribMat),ribMat),stretcherMesh=registerVisual(new THREE.Mesh(strGeo.clone(),strMat),strMat);ribMesh.castShadow=stretcherMesh.castShadow=true;ribMesh.frustumCulled=false;
+        const topHinge=registerVisual(new THREE.Mesh(createHingeGeometry(),ppMat.clone()),ppMat.clone()),runnerHinge=registerVisual(new THREE.Mesh(createHingeGeometry(),ppMat.clone()),ppMat.clone()),knuckleHinge=registerVisual(new THREE.Mesh(createHingeGeometry(),ppMat.clone()),ppMat.clone());
+        for(const mesh of [topHinge,runnerHinge,knuckleHinge]){mesh.frustumCulled=false;mesh.castShadow=true;}
+        sim.ribs.push({i,az,radial,tangent,down,upW,hinge,ribMesh,stretcherMesh,topHinge,runnerHinge,knuckleHinge,
+          direction:new THREE.Vector3(),camberAxis:new THREE.Vector3(),sideAxis:new THREE.Vector3(),camber:0,
+          strDirection:new THREE.Vector3(),runnerJoint:new THREE.Vector3(),mountJoint:new THREE.Vector3(),tip:new THREE.Vector3(),
+          theta:CLOSED_ANGLES.rib,elastic:0,elasticVelocity:0,freeVelocity:0,
+          moment:new THREE.Vector3(),force:new THREE.Vector3(),stresses:new Float64Array(3),stressEMA:new Float64Array(3),damageFrames:0,broken:false,brokenType:-1});
+      }
+      // Initialize every rigid transform first. Cloth vertices then spawn on
+      // valid rib tips instead of briefly occupying the world origin.
+      updateMechanismFrames();buildCloth();updateAllVisuals();setView(ui.view);refreshRibDots();logEvent(`Geometry rebuilt: runner 120 mm, physical canopy lock ${Math.round(Y_GEOMETRIC_LOCK*1000)} mm.`);sim.status='SETTLING - FAILURE DISARMED';
+    }
+    function orientZ(mesh,origin,direction){mesh.position.copy(origin);mesh.quaternion.setFromUnitVectors(axisZ,direction);mesh.scale.set(1,1,1);}
+    function updateMechanismFrames(){
+      const angles=linkageAngles(sim.yRunner);sim.thetaLaw=angles.rib;sim.thetaStretcherLaw=angles.stretcher;
+      sim.deployment=clamp((sim.yRunner-CFG.runnerYClosed)/Math.max(1e-6,Y_GEOMETRIC_LOCK-CFG.runnerYClosed),0,1);
+      const u=smooth(sim.deployment);sim.hingeTopDeg=lerp(8,82,u);sim.hingeRunnerDeg=lerp(12,118,u);sim.hingeKnuckleDeg=lerp(160,54,u);
+      localPoint(0,sim.yRunner,0,sim.runnerMesh.position);sim.runnerMesh.quaternion.copy(sim.qTilt);
+      for(const rib of sim.ribs){
+        if(!rib.broken)rib.theta=angles.rib+rib.elastic;
+        const theta=rib.theta,sn=Math.sin(theta),cs=Math.cos(theta);
+        rib.direction.copy(rib.radial).multiplyScalar(sn).addScaledVector(rib.down,cs).normalize();
+        // Camber axis = shaft-up projected perpendicular to the rib chord, and
+        // camber fades as the rib folds so the closed bundle stays slim.
+        rib.camberAxis.copy(rib.upW).addScaledVector(rib.direction,-rib.upW.dot(rib.direction));
+        if(rib.camberAxis.lengthSq()<1e-6)rib.camberAxis.copy(rib.radial);
+        rib.camberAxis.normalize();
+        rib.camber=CFG.ribCamber*clamp(sn,0,1);
+        ribPoint(rib,1,rib.tip);
+        ribPoint(rib,CFG.ribMountS,rib.mountJoint);
+        localPoint(0,sim.yRunner,0,rib.runnerJoint);
+        rib.strDirection.subVectors(rib.mountJoint,rib.runnerJoint).normalize();
+        rib.sideAxis.crossVectors(rib.direction,rib.camberAxis).normalize();
+      }
+    }
+    function ribPoint(rib,s,out){return ribCurvePoint(rib.hinge,rib.direction,rib.camberAxis,s,rib.camber,out);}
+    /* Cambered flat ribbon - real ribs are bowed metal strip, not straight bars. */
+    const RIB_SEGS=12;
+    function createRibbonGeometry(){
+      const n=(RIB_SEGS+1)*2,positions=new Float32Array(n*3),indices=[];
+      for(let i=0;i<RIB_SEGS;i++){const a=i*2,b=a+1,c=a+2,d=a+3;indices.push(a,c,b,b,c,d);}
+      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(positions,3));g.setIndex(indices);
+      g.computeVertexNormals();g.boundingSphere=new THREE.Sphere(new THREE.Vector3(),1);return g;
+    }
+    function updateRibbon(mesh,rib){
+      const p=mesh.geometry.attributes.position.array;
+      for(let i=0;i<=RIB_SEGS;i++){
+        const s=i/RIB_SEGS;ribPoint(rib,s,tmpC);
+        const w=CFG.ribWidth*(.55+.45*s);
+        const o=i*6;
+        p[o]  =tmpC.x+rib.sideAxis.x*w;p[o+1]=tmpC.y+rib.sideAxis.y*w;p[o+2]=tmpC.z+rib.sideAxis.z*w;
+        p[o+3]=tmpC.x-rib.sideAxis.x*w;p[o+4]=tmpC.y-rib.sideAxis.y*w;p[o+5]=tmpC.z-rib.sideAxis.z*w;
+      }
+      mesh.geometry.attributes.position.needsUpdate=true;
+      mesh.geometry.computeVertexNormals();
+      mesh.geometry.boundingSphere.radius=1;
+    }
+    function updateAllVisuals(){
+      for(const rib of sim.ribs){
+        updateRibbon(rib.ribMesh,rib);
+        orientZ(rib.stretcherMesh,rib.runnerJoint,rib.strDirection);
+        rib.stretcherMesh.scale.set(1,1,clamp(rib.runnerJoint.distanceTo(rib.mountJoint)/CFG.stretcherLength,.3,1.4));
+        const shaftTangent=tmpA.copy(rib.down);hingeEndpoints(rib.hinge,shaftTangent,rib.direction,tmpB,tmpC);
+        deformHinge(rib.topHinge,tmpB,tmpC,shaftTangent,rib.tangent,sim.hingeTopDeg*DEG);
+        const runnerTangent=tmpA.copy(rib.down).negate();hingeEndpoints(rib.runnerJoint,runnerTangent,rib.strDirection,tmpB,tmpC);
+        deformHinge(rib.runnerHinge,tmpB,tmpC,runnerTangent,rib.tangent,sim.hingeRunnerDeg*DEG);
+        const tangentAtMount=ribTangent(rib,CFG.ribMountS,tmpD),ribBack=tmpE.copy(tangentAtMount).negate(),strBack=tmpB.copy(rib.strDirection).negate();
+        hingeEndpoints(rib.mountJoint,strBack,ribBack,tmpC,rib.tip);
+        deformHinge(rib.knuckleHinge,tmpC,rib.tip,strBack,rib.tangent,sim.hingeKnuckleDeg*DEG);
+      }
+    }
+    function ribTangent(rib,s,out){ribPoint(rib,clamp(s+.02,0,1),tmpA);ribPoint(rib,clamp(s-.02,0,1),tmpB);return out.subVectors(tmpA,tmpB).normalize();}
+
+    const PANEL_COLS=5,CLOTH_COLS=CFG.ribs*PANEL_COLS,CLOTH_RINGS=12,CLOTH_COUNT=CLOTH_COLS*(CLOTH_RINGS+1);
+    const clothIndex=(c,r)=>r*CLOTH_COLS+c;
+    /* A rib is a circular arc: chord endpoints plus upward camber at mid-span.
+       This is the single most important realism fix - real umbrella ribs bow. */
+    const PANEL_CONNECTOR=true;
+    function ribCurvePoint(hinge,dir,camberAxis,s,camber,out){
+      const bow=4*s*(1-s);
+      return out.copy(hinge).addScaledVector(dir,s*CFG.ribLength).addScaledVector(camberAxis,camber*bow);
+    }
+    function buildCloth(){
+      const positions=new Float32Array(CLOTH_COUNT*3),previous=new Float32Array(CLOTH_COUNT*3),velocities=new Float32Array(CLOTH_COUNT*3),targets=new Float32Array(CLOTH_COUNT*3),accelerations=new Float32Array(CLOTH_COUNT*3),pinned=new Uint8Array(CLOTH_COUNT),colors=new Float32Array(CLOTH_COUNT*3),indices=[],faceRibA=[],faceRibB=[];
+      for(let c=0;c<CLOTH_COLS;c++){const next=(c+1)%CLOTH_COLS;for(let r=0;r<CLOTH_RINGS;r++){const a=clothIndex(c,r),b=clothIndex(next,r),cc=clothIndex(next,r+1),d=clothIndex(c,r+1);indices.push(a,b,cc,a,cc,d);const ra=Math.floor(c/PANEL_COLS),rb=(ra+1)%CFG.ribs;faceRibA.push(ra,ra);faceRibB.push(rb,rb);}}
+      for(let v=0;v<CLOTH_COUNT;v++){colors[v*3]=1;colors[v*3+1]=.84+.1*(Math.floor((v%CLOTH_COLS)/PANEL_COLS)%2);colors[v*3+2]=.87;}
+
+      /* Rest lengths are measured on the FULLY DEPLOYED pose, so the weave is
+         at natural length when open and genuinely taut, not slack. */
+      const restPose=new Float32Array(CLOTH_COUNT*3);
+      deployedRestPose(restPose);
+      const cA=[],cB=[],cRest=[],cType=[];
+      const restLen=(a,b)=>Math.hypot(restPose[a*3]-restPose[b*3],restPose[a*3+1]-restPose[b*3+1],restPose[a*3+2]-restPose[b*3+2]);
+      const addEdge=(a,b,type)=>{cA.push(a);cB.push(b);cRest.push(restLen(a,b));cType.push(type);};
+      for(let c=0;c<CLOTH_COLS;c++){
+        const n1=(c+1)%CLOTH_COLS,n2=(c+2)%CLOTH_COLS;
+        for(let r=0;r<=CLOTH_RINGS;r++){
+          if(r<CLOTH_RINGS) addEdge(clothIndex(c,r),clothIndex(c,r+1),0);          // warp (radial)
+          addEdge(clothIndex(c,r),clothIndex(n1,r),0);                              // weft (hoop)
+          if(r<CLOTH_RINGS){                                                        // weave shear
+            addEdge(clothIndex(c,r),clothIndex(n1,r+1),1);
+            addEdge(clothIndex(n1,r),clothIndex(c,r+1),1);
+          }
+          if(r<CLOTH_RINGS-1) addEdge(clothIndex(c,r),clothIndex(c,r+2),2);         // radial bending
+          addEdge(clothIndex(c,r),clothIndex(n2,r),2);                              // hoop bending
+        }
+      }
+      const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));geometry.setAttribute('aStress',new THREE.BufferAttribute(new Float32Array(CLOTH_COUNT),1));geometry.setIndex(indices);
+      const standard=new THREE.MeshStandardMaterial({color:0xd62442,roughness:.55,metalness:.02,side:THREE.DoubleSide,vertexColors:true}),stress=stressMaterial();canopy=new THREE.Mesh(geometry,standard);canopy.userData.standard=standard;canopy.userData.stress=stress;canopy.castShadow=canopy.receiveShadow=true;canopy.frustumCulled=false;umbrella.add(canopy);
+      const vertexMass=Math.max(1e-5,FABRIC.arealDensity*Math.PI*CFG.canopyRadius*CFG.canopyRadius/CLOTH_COUNT);
+      cloth={positions,previous,velocities,targets,accelerations,pinned,restPose,
+        cA:Int32Array.from(cA),cB:Int32Array.from(cB),cRest:Float32Array.from(cRest),cType:Uint8Array.from(cType),
+        lambda:new Float32Array(cA.length),
+        faceRibA:Int8Array.from(faceRibA),faceRibB:Int8Array.from(faceRibB),faceCount:indices.length/3,
+        mass:vertexMass,invMass:1/vertexMass,strain:new Float32Array(CLOTH_COUNT)};
+      updateClothTargets(true);geometry.computeVertexNormals();geometry.computeBoundingSphere();
+    }
+    /* Canopy geometry at the deployed lock angle, used only for rest lengths. */
+    function deployedRestPose(out){
+      const tips=[],OPEN_ANGLE=82*DEG;
+      for(let i=0;i<CFG.ribs;i++){
+        const rib=sim.ribs[i],dir=new THREE.Vector3().copy(rib.radial).multiplyScalar(Math.sin(OPEN_ANGLE)).addScaledVector(rib.down,Math.cos(OPEN_ANGLE)).normalize();
+        const cam=new THREE.Vector3().copy(rib.upW).addScaledVector(dir,-rib.upW.dot(dir)).normalize();
+        for(let s=0;s<=CLOTH_RINGS;s++)ribCurvePoint(rib.hinge,dir,cam,s/CLOTH_RINGS,CFG.ribCamber,tmpC),tips.push(tmpC.clone());
+      }
+      for(let c=0;c<CLOTH_COLS;c++){
+        const ia=Math.floor(c/PANEL_COLS),ib=(ia+1)%CFG.ribs,tPanel=(c%PANEL_COLS)/PANEL_COLS;
+        for(let r=0;r<=CLOTH_RINGS;r++){
+          const s=r/CLOTH_RINGS,p=new THREE.Vector3().lerpVectors(tips[ia*(CLOTH_RINGS+1)+r],tips[ib*(CLOTH_RINGS+1)+r],tPanel);
+          const o=clothIndex(c,r)*3;out[o]=p.x;out[o+1]=p.y;out[o+2]=p.z;
+        }
+      }
+    }
+    function canopyApex(out){const openTipDrop=CFG.ribLength*Math.cos(82*DEG),y=CFG.ferruleY+CFG.canopyArch-openTipDrop;return localPoint(0,y,0,out);}
+    function updateClothTargets(reset=false){
+      const open=smooth(sim.deployment);
+      // Fullness fades when closed so the fabric gathers into a slim bundle.
+      const bulge=CFG.panelBulge*(.15+.85*open);
+      for(let c=0;c<CLOTH_COLS;c++){
+        const ia=Math.floor(c/PANEL_COLS),ib=(ia+1)%CFG.ribs;
+        const tPanel=(c%PANEL_COLS)/PANEL_COLS,seam=(c%PANEL_COLS)===0;
+        const ribA=sim.ribs[ia],ribB=sim.ribs[ib];
+        // Outward normal at this azimuth (mid-gore), so gores billow convexly.
+        midRadial.copy(ribA.radial).lerp(ribB.radial,tPanel).normalize();
+        for(let r=0;r<=CLOTH_RINGS;r++){
+          const s=r/CLOTH_RINGS;
+          ribPoint(ribA,s,tmpC);              // exact station on rib A
+          if(!seam){
+            ribPoint(ribB,s,tmpD);
+            tmpC.lerp(tmpD,tPanel);           // chord across the gore
+            // Convex gore: real canopies are cut with extra width so the
+            // panel domes outward between the two ribs that hold it.
+            tmpC.addScaledVector(midRadial,bulge*Math.sin(Math.PI*tPanel)*Math.sin(Math.PI*s));
+          }
+          const id=clothIndex(c,r),o=id*3;
+          cloth.targets[o]=tmpC.x;cloth.targets[o+1]=tmpC.y;cloth.targets[o+2]=tmpC.z;
+          // Sewn at every station along each rib, plus the apex.
+          cloth.pinned[id]=(r===0||(seam&&!ribA.broken))?1:0;
+          if(reset){
+            cloth.positions[o]=cloth.previous[o]=tmpC.x;
+            cloth.positions[o+1]=cloth.previous[o+1]=tmpC.y;
+            cloth.positions[o+2]=cloth.previous[o+2]=tmpC.z;
+          }
+        }
+      }
+    }
+    /* XPBD membrane solver. Explicit springs at E*t/(1-nu^2) = 512 kN/m would
+       need dt < 4e-5 s to stay stable, so stiffness is expressed as XPBD
+       compliance instead: unconditionally stable and effectively inextensible,
+       which is exactly the drum-taut behaviour of tensioned ripstop. */
+    const STIFFNESS_BY_TYPE=[0,0,0];
+    function clothSubstep(dt){
+      const p=cloth.positions,prev=cloth.previous,vel=cloth.velocities,target=cloth.targets,acc=cloth.accelerations,inv=cloth.invMass;
+      STIFFNESS_BY_TYPE[0]=FABRIC.kStretch;STIFFNESS_BY_TYPE[1]=FABRIC.kShear;STIFFNESS_BY_TYPE[2]=FABRIC.kBend;
+      // Radial pre-tension: rest lengths shrink as the runner rises, pulling
+      // every panel taut instead of letting it sag between the ribs.
+      const preStrain=FABRIC.preStrain*clamp(sim.yRunner/CFG.runnerYMechanicalOpen,0,1);
+      const restScale=1/(1+preStrain);
+      const damp=clamp(1-FABRIC.damping*dt*.35,.80,.999);
+      for(let i=0;i<CLOTH_COUNT;i++){
+        const o=i*3;prev[o]=p[o];prev[o+1]=p[o+1];prev[o+2]=p[o+2];
+        if(cloth.pinned[i]){p[o]=target[o];p[o+1]=target[o+1];p[o+2]=target[o+2];vel[o]=vel[o+1]=vel[o+2]=0;continue;}
+        vel[o]=(vel[o]+acc[o]*dt)*damp;vel[o+1]=(vel[o+1]+(acc[o+1]-9.81)*dt)*damp;vel[o+2]=(vel[o+2]+acc[o+2]*dt)*damp;
+        p[o]+=vel[o]*dt;p[o+1]+=vel[o+1]*dt;p[o+2]+=vel[o+2]*dt;
+      }
+      const dt2=dt*dt,n=cloth.cA.length;cloth.lambda.fill(0);
+      for(let it=0;it<FABRIC.iterations;it++){
+        for(let e=0;e<n;e++){
+          const ia=cloth.cA[e],ib=cloth.cB[e],a=ia*3,b=ib*3;
+          const wa=cloth.pinned[ia]?0:inv,wb=cloth.pinned[ib]?0:inv,wsum=wa+wb;
+          if(wsum===0)continue;
+          const dx=p[b]-p[a],dy=p[b+1]-p[a+1],dz=p[b+2]-p[a+2];
+          const len=Math.hypot(dx,dy,dz);if(len<1e-9)continue;
+          const rest=cloth.cRest[e]*restScale,C=len-rest;
+          const alpha=(1/STIFFNESS_BY_TYPE[cloth.cType[e]])/dt2;
+          const dl=(-C-alpha*cloth.lambda[e])/(wsum+alpha);
+          cloth.lambda[e]+=dl;
+          const s=dl/len;
+          p[a]-=dx*s*wa;p[a+1]-=dy*s*wa;p[a+2]-=dz*s*wa;
+          p[b]+=dx*s*wb;p[b+1]+=dy*s*wb;p[b+2]+=dz*s*wb;
+        }
+      }
+      const invDt=1/dt;
+      for(let i=0;i<CLOTH_COUNT;i++){
+        const o=i*3;
+        if(cloth.pinned[i]){p[o]=target[o];p[o+1]=target[o+1];p[o+2]=target[o+2];continue;}
+        vel[o]=(p[o]-prev[o])*invDt;vel[o+1]=(p[o+1]-prev[o+1])*invDt;vel[o+2]=(p[o+2]-prev[o+2])*invDt;
+      }
+    }
+
+    function windDirection(out){const az=ui.windAzimuth*DEG,el=ui.windElevation*DEG,ce=Math.cos(el);return out.set(Math.cos(az)*ce,Math.sin(el),Math.sin(az)*ce).normalize();}
+    const aeroRelative=new THREE.Vector3(),aeroForce=new THREE.Vector3(),aeroCenter=new THREE.Vector3(),aeroHalf=new THREE.Vector3(),aeroLever=new THREE.Vector3();
+    function aerodynamicPass(){
+      cloth.accelerations.fill(0);for(const rib of sim.ribs){rib.force.set(0,0,0);rib.moment.set(0,0,0);}if(sim.wind.lengthSq()<.001)return;
+      const p=cloth.positions,vel=cloth.velocities,index=canopy.geometry.index.array,mass=cloth.mass;
+      for(let f=0;f<cloth.faceCount;f++){const va=index[f*3],vb=index[f*3+1],vc=index[f*3+2],ia=va*3,ib=vb*3,ic=vc*3;tmpA.set(p[ia],p[ia+1],p[ia+2]);tmpB.set(p[ib],p[ib+1],p[ib+2]);tmpC.set(p[ic],p[ic+1],p[ic+2]);tmpD.subVectors(tmpB,tmpA);tmpE.subVectors(tmpC,tmpA).cross(tmpD);const doubleArea=tmpE.length();if(doubleArea<1e-10)continue;const area=doubleArea*.5;tmpE.multiplyScalar(1/doubleArea);
+        const vx=(vel[ia]+vel[ib]+vel[ic])/3,vy=(vel[ia+1]+vel[ib+1]+vel[ic+1])/3,vz=(vel[ia+2]+vel[ib+2]+vel[ic+2])/3;
+        aeroRelative.set(sim.wind.x-vx,sim.wind.y-vy,sim.wind.z-vz);const speed2=aeroRelative.lengthSq();if(speed2<.01)continue;aeroRelative.multiplyScalar(1/Math.sqrt(speed2));
+        // Thin-shell pressure differential: windward Cp = cos^2(AoA),
+        // leeward suction Cp = -0.45. dP = q * (Cp_front - Cp_back).
+        const cosPhi=tmpE.dot(aeroRelative),q=.5*CFG.airDensity*speed2;
+        const deltaP=q*(cosPhi*cosPhi-FABRIC.cpBack);
+        const magnitude=deltaP*area*Math.sign(cosPhi);
+        aeroForce.copy(tmpE).multiplyScalar(magnitude);const accelScale=1/(3*mass);for(const o of [ia,ib,ic]){cloth.accelerations[o]+=aeroForce.x*accelScale;cloth.accelerations[o+1]+=aeroForce.y*accelScale;cloth.accelerations[o+2]+=aeroForce.z*accelScale;}
+        aeroCenter.addVectors(tmpA,tmpB).add(tmpC).multiplyScalar(1/3);for(const ri of [cloth.faceRibA[f],cloth.faceRibB[f]]){const rib=sim.ribs[ri];aeroHalf.copy(aeroForce).multiplyScalar(.5);rib.force.add(aeroHalf);aeroLever.subVectors(aeroCenter,rib.hinge);rib.moment.add(tmpD.crossVectors(aeroLever,aeroHalf));}}
+      for(let i=0;i<CLOTH_COUNT;i++){const o=i*3,a=Math.hypot(cloth.accelerations[o],cloth.accelerations[o+1],cloth.accelerations[o+2]);if(a>500){const s=500/a;cloth.accelerations[o]*=s;cloth.accelerations[o+1]*=s;cloth.accelerations[o+2]*=s;}}
+    }
+
+    function springForce(y,v){const compression=Math.max(0,CFG.runnerYMechanicalOpen-y);return spring.k*compression-spring.c*v;}
+    function mechanismSubstep(dt){
+      const storedForce=springForce(sim.yRunner,sim.vRunner);let force=storedForce;
+      // The closed latch supplies an equal/opposite spring reaction plus the
+      // retracting servo force. At y=120 mm this balances exactly at 45.6 N.
+      // Retraction is a critically damped drive to Y = 0.120 m, so the ribs
+      // fold back down their trigonometric arcs without snapping or overshoot.
+      if(!sim.open)force+=-storedForce+920*(CFG.runnerYClosed-sim.yRunner)-22*sim.vRunner;
+      sim.vRunner+=clamp(force/spring.mass,-2200,2200)*dt;sim.yRunner+=sim.vRunner*dt;if(sim.yRunner<=CFG.runnerYClosed){sim.yRunner=CFG.runnerYClosed;if(sim.vRunner<0)sim.vRunner=0;}if(sim.yRunner>=Y_GEOMETRIC_LOCK){sim.yRunner=Y_GEOMETRIC_LOCK;if(sim.vRunner>0)sim.vRunner=0;}sim.springForce=springForce(sim.yRunner,sim.vRunner);
+      const angles=linkageAngles(sim.yRunner),ribMass=CFG.aluminumDensity*CFG.ribWidth*CFG.ribHeight*CFG.ribLength,inertia=ribMass*CFG.ribLength*CFG.ribLength/3;
+      for(const rib of sim.ribs){const aeroMoment=rib.moment.dot(rib.tangent);if(!rib.broken){const damping=2*.32*Math.sqrt(CFG.linkageK*inertia),dd=(aeroMoment-CFG.linkageK*rib.elastic-damping*rib.elasticVelocity)/Math.max(inertia,1e-7);rib.elasticVelocity+=clamp(dd,-1600,1600)*dt;rib.elastic+=rib.elasticVelocity*dt;rib.elastic=clamp(rib.elastic,-.75,.75);rib.theta=angles.rib+rib.elastic;}else{const gravityMoment=-ribMass*9.81*CFG.ribLength*.5*Math.sin(rib.theta),dd=(aeroMoment+gravityMoment-.004*rib.freeVelocity)/Math.max(inertia,1e-7);rib.freeVelocity+=clamp(dd,-1800,1800)*dt;rib.theta+=rib.freeVelocity*dt;rib.theta=clamp(rib.theta,-.2,Math.PI*.95);}}
+      updateMechanismFrames();updateClothTargets(false);clothSubstep(dt);
+    }
+    function stressPass(){
+      let maxStress=0,maxDamage=1;const deployment=smooth(sim.deployment),commanded=[(lerp(8,82,deployment)-8)*DEG,(lerp(12,118,deployment)-12)*DEG,(160-lerp(160,54,deployment))*DEG];
+      for(const rib of sim.ribs){const axial=Math.abs(rib.force.dot(rib.direction))/Math.max(PP.W*PP.t,1e-10),elasticTerms=[rib.elastic,rib.elastic*.72,rib.elastic*.88];let localMax=0;for(let h=0;h<3;h++){const delta=Math.abs(elasticTerms[h]+commanded[h]*PP.formedStrainFraction),bending=PP.E*PP.t*delta/(2*PP.L),raw=clamp(bending+axial,0,PP.yieldStress*2.5);rib.stresses[h]=raw;rib.stressEMA[h]+=(raw-rib.stressEMA[h])*PP.alpha;localMax=Math.max(localMax,rib.stressEMA[h]);}rib.maxStress=localMax;rib.damage=Math.min(10,1+9*localMax/PP.yieldStress);maxStress=Math.max(maxStress,localMax);maxDamage=Math.max(maxDamage,rib.damage);if(!rib.broken&&sim.warmup===0&&localMax>=PP.yieldStress)rib.damageFrames++;else rib.damageFrames=Math.max(0,rib.damageFrames-2);if(!rib.broken&&rib.damageFrames>=8)breakRib(rib);}sim.maxStressMPa=maxStress/1e6;sim.damageIndex=maxDamage;updateStressColors();
+    }
+    /* LOCALIZED TEARING: nothing is deleted or hidden. The hinge index buffer
+       is split at Ring #1 (root, peak bending moment). The base stub keeps its
+       faces; the outboard rings become an independent mesh that tumbles away. */
+    function tearHingeAtRoot(mesh){
+      const geometry=mesh.geometry,index=geometry.index.array,us=geometry.attributes.hingeU.array;
+      const rowOf=i=>Math.round(us[i]*HINGE_SEGMENTS);
+      const stub=[],flying=[];
+      for(let f=0;f<index.length;f+=3){
+        const a=index[f],b=index[f+1],c=index[f+2];
+        const hi=Math.max(rowOf(a),rowOf(b),rowOf(c)),lo=Math.min(rowOf(a),rowOf(b),rowOf(c));
+        if(hi<=1)stub.push(a,b,c);              // root stub stays on the shaft
+        else if(lo>=2)flying.push(a,b,c);       // outboard fragment separates
+        // faces spanning ring 1 to ring 2 are removed: this is the fracture gap
+      }
+      const detachedGeometry=new THREE.BufferGeometry();
+      detachedGeometry.setAttribute('position',new THREE.BufferAttribute(geometry.attributes.position.array.slice(),3));
+      detachedGeometry.setAttribute('aStress',new THREE.BufferAttribute(new Float32Array(geometry.attributes.position.count).fill(1),1));
+      detachedGeometry.setIndex(flying);detachedGeometry.computeVertexNormals();
+      detachedGeometry.boundingSphere=new THREE.Sphere(new THREE.Vector3(),.05);
+      const detached=new THREE.Mesh(detachedGeometry,new THREE.MeshStandardMaterial({color:0xc2410c,roughness:.55,metalness:.03,side:THREE.DoubleSide}));
+      detached.position.copy(mesh.position);detached.quaternion.copy(mesh.quaternion);detached.frustumCulled=false;detached.castShadow=true;
+      scene.add(detached);
+      geometry.setIndex(stub);geometry.computeVertexNormals();
+      return detached;
+    }
+    function breakRib(rib){
+      rib.broken=true;
+      rib.brokenType=rib.stressEMA[0]>=rib.stressEMA[1]&&rib.stressEMA[0]>=rib.stressEMA[2]?0:(rib.stressEMA[1]>=rib.stressEMA[2]?1:2);
+      rib.freeVelocity=rib.elasticVelocity+(Math.random()-.5)*2;
+      sim.broken++;
+      const torn=[rib.topHinge,rib.runnerHinge,rib.knuckleHinge][rib.brokenType];
+      const fragment=tearHingeAtRoot(torn);
+      sim.debris.push({mesh:fragment,
+        velocity:new THREE.Vector3().copy(sim.wind).multiplyScalar(.02).add(new THREE.Vector3((Math.random()-.5)*.4,.25+Math.random()*.3,(Math.random()-.5)*.4)),
+        spin:new THREE.Vector3((Math.random()-.5)*9,(Math.random()-.5)*9,(Math.random()-.5)*9)});
+      const names=['TOP','RUNNER','KNUCKLE'];
+      toast(`RIB ${rib.i+1}: ${names[rib.brokenType]} PP HINGE TORE AT ROOT RING`,true);
+      logEvent(`Hinge ${rib.i+1}/${names[rib.brokenType]} fractured at ring 1, above 33 MPa.`,true);
+      refreshRibDots();
+    }
+    function updateDebris(dt){
+      for(const piece of sim.debris){
+        piece.velocity.y-=9.81*dt;
+        piece.velocity.addScaledVector(sim.wind,.035*dt);
+        piece.velocity.multiplyScalar(.995);
+        piece.mesh.position.addScaledVector(piece.velocity,dt);
+        piece.mesh.rotateX(piece.spin.x*dt);piece.mesh.rotateY(piece.spin.y*dt);piece.mesh.rotateZ(piece.spin.z*dt);
+        if(piece.mesh.position.y<.004){piece.mesh.position.y=.004;piece.velocity.y*=-.32;piece.velocity.multiplyScalar(.72);piece.spin.multiplyScalar(.7);}
+      }
+    }
+    function updateStressColors(){const cs=canopy.geometry.attributes.aStress.array;for(let c=0;c<CLOTH_COLS;c++){const ra=sim.ribs[Math.floor(c/PANEL_COLS)],rb=sim.ribs[(Math.floor(c/PANEL_COLS)+1)%CFG.ribs],s=clamp(Math.max(ra.maxStress||0,rb.maxStress||0)/PP.yieldStress,0,1);for(let r=0;r<=CLOTH_RINGS;r++)cs[clothIndex(c,r)]=s;}canopy.geometry.attributes.aStress.needsUpdate=true;for(const rib of sim.ribs){const v=rib.stressEMA,m=Math.max(...v);fillStress(rib.ribMesh,m/PP.yieldStress*.6);fillStress(rib.stretcherMesh,Math.max(v[1],v[2])/PP.yieldStress*.75);fillStress(rib.topHinge,v[0]/PP.yieldStress);fillStress(rib.runnerHinge,v[1]/PP.yieldStress);fillStress(rib.knuckleHinge,v[2]/PP.yieldStress);}}
+    function fixedStep(){sim.time+=FIXED_DT;sim.frame++;if(sim.warmup>0)sim.warmup--;const gust=1+ui.gustiness*(Math.sin(sim.time*1.7)*.55+Math.sin(sim.time*3.13+1.1)*.3);windDirection(sim.wind).multiplyScalar(Math.max(0,ui.windSpeed*gust));const sub=FIXED_DT/SUBSTEPS;for(let i=0;i<SUBSTEPS;i++)mechanismSubstep(sub);aerodynamicPass();stressPass();updateAllVisuals();canopy.geometry.attributes.position.needsUpdate=true;canopy.geometry.computeVertexNormals();if(canopy.geometry.boundsTree&&sim.frame%3===0)canopy.geometry.boundsTree.refit();sim.status=sim.warmup>0?`SETTLING ${sim.warmup} - FAILURE DISARMED`:sim.broken?`DEGRADED - ${CFG.ribs-sim.broken}/${CFG.ribs} RIBS`:(sim.open?'DEPLOYED - MONITORING ARMED':'CLOSED - MONITORING ARMED');}
+
+    const MAX_PARTICLES=3000,particlePositions=new Float32Array(MAX_PARTICLES*3),particleSpeeds=new Float32Array(MAX_PARTICLES),particleGeometry=new THREE.BoxGeometry(.0016,.0016,.055),particleMaterial=new THREE.MeshBasicMaterial({color:0x8cecff,transparent:true,opacity:.48,blending:THREE.AdditiveBlending,depthWrite:false}),particles=new THREE.InstancedMesh(particleGeometry,particleMaterial,MAX_PARTICLES);particles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);particles.frustumCulled=false;scene.add(particles);
+    const particleDummy=new THREE.Object3D(),windSide=new THREE.Vector3(),windUp=new THREE.Vector3(),particleSpawn=new THREE.Vector3();
+    function windBasis(direction){windSide.set(0,1,0).cross(direction);if(windSide.lengthSq()<1e-5)windSide.set(1,0,0).cross(direction);windSide.normalize();windUp.crossVectors(direction,windSide).normalize();}
+    function respawnParticle(i,direction,upstream=-1.8){windBasis(direction);const a=(Math.random()-.5)*2.4,b=(Math.random()-.5)*1.6,p=particleSpawn.copy(direction).multiplyScalar(upstream).addScaledVector(windSide,a).addScaledVector(windUp,b);p.y+=.5;particlePositions.set([p.x,p.y,p.z],i*3);particleSpeeds[i]=.7+Math.random()*.7;}
+    const initialWindDir=new THREE.Vector3(1,0,0);for(let i=0;i<MAX_PARTICLES;i++)respawnParticle(i,initialWindDir,-1.8+Math.random()*3.6);
+    function updateParticles(dt){const count=clamp(Math.round(ui.particleCount),0,MAX_PARTICLES);particles.count=count;if(!count)return;const direction=windDirection(tmpA);windBasis(direction);tmpQ.setFromUnitVectors(axisZ,direction);const speed=Math.max(.3,sim.wind.length());for(let i=0;i<count;i++){const o=i*3;particlePositions[o]+=direction.x*speed*particleSpeeds[i]*dt;particlePositions[o+1]+=direction.y*speed*particleSpeeds[i]*dt;particlePositions[o+2]+=direction.z*speed*particleSpeeds[i]*dt;const along=particlePositions[o]*direction.x+(particlePositions[o+1]-.5)*direction.y+particlePositions[o+2]*direction.z,radius=Math.hypot(particlePositions[o],particlePositions[o+1]-.5,particlePositions[o+2]);if(along>2.1||radius>3.2||particlePositions[o+1]<-.1||particlePositions[o+1]>2.2)respawnParticle(i,direction,-1.9-Math.random()*.4);particleDummy.position.set(particlePositions[o],particlePositions[o+1],particlePositions[o+2]);particleDummy.quaternion.copy(tmpQ);particleDummy.scale.set(1,1,.6+Math.min(3,speed*.025));particleDummy.updateMatrix();particles.setMatrixAt(i,particleDummy.matrix);}particles.instanceMatrix.needsUpdate=true;}
+
+    function toast(message,bad=false){const node=document.createElement('div');node.className=`toast${bad?' bad':''}`;node.textContent=message;$('toastHost').appendChild(node);setTimeout(()=>node.remove(),4200);}
+    function logEvent(message,critical=false){const div=document.createElement('div');div.className=critical?'critical':'';div.textContent=message;$('eventLog').prepend(div);while($('eventLog').children.length>4)$('eventLog').lastChild.remove();}
+    function refreshRibDots(){const host=$('ribDots');host.innerHTML='';for(const rib of sim.ribs){const dot=document.createElement('b');dot.className=rib.broken?'fail':'';host.appendChild(dot);}const text=document.createElement('span');text.textContent=`${CFG.ribs-sim.broken} / ${CFG.ribs}`;host.appendChild(text);}
+
+    const pane=new Pane({title:'AEOLUS CONTROL DECK',container:$('pane'),expanded:true});
+    const windFolder=pane.addFolder({title:'WIND VECTOR XYZ',expanded:true});windFolder.addBinding(ui,'windSpeed',{min:0,max:100,step:.5,label:'speed m/s'});windFolder.addBinding(ui,'windAzimuth',{min:0,max:360,step:1,label:'azimuth deg'});windFolder.addBinding(ui,'windElevation',{min:-90,max:90,step:1,label:'elevation deg'});windFolder.addBinding(ui,'gustiness',{min:0,max:1,step:.01,label:'gust sigma'});windFolder.addBinding(ui,'particleCount',{min:0,max:MAX_PARTICLES,step:50,label:'particles'});
+    const mechanismFolder=pane.addFolder({title:'SPRING DEPLOYMENT',expanded:true}),toggleButton=mechanismFolder.addButton({title:'OPEN CANOPY',label:'latch'});toggleButton.on('click',()=>{if(!sim.built)return toast('Initialize the simulation first.',true);sim.open=!sim.open;toggleButton.title=sim.open?'CLOSE CANOPY':'OPEN CANOPY';logEvent(sim.open?'Latch released: 45.6 N spring deployment.':'Retraction motor engaged.');});mechanismFolder.addBinding(spring,'k',{min:40,max:240,step:1,label:'spring k N/m'});mechanismFolder.addBinding(spring,'c',{min:1,max:20,step:.1,label:'damping N s/m'});mechanismFolder.addBinding(sim,'springForce',{readonly:true,label:'force N',format:v=>v.toFixed(2)});mechanismFolder.addBinding(sim,'yRunner',{readonly:true,label:'runner m',format:v=>v.toFixed(4)});mechanismFolder.addBinding(sim,'thetaLaw',{readonly:true,label:'rib angle deg',format:v=>(v/DEG).toFixed(2)});mechanismFolder.addButton({title:'REPAIR / REBUILD',label:'service'}).on('click',()=>{if(!sim.built)return;buildUmbrella(+$('pitchInput').value,+$('yawInput').value);toggleButton.title='OPEN CANOPY';toast('Umbrella rebuilt in the exact closed pose.');});
+    const hingeFolder=pane.addFolder({title:'LIVING HINGE GEOMETRY',expanded:true});hingeFolder.addBinding(PP,'t_mm',{min:.15,max:.8,step:.01,label:'thickness mm'}).on('change',updatePP);hingeFolder.addBinding(PP,'L_mm',{min:.5,max:3,step:.1,label:'length mm'}).on('change',updatePP);hingeFolder.addBinding(PP,'W_mm',{min:2,max:15,step:.5,label:'width mm'}).on('change',updatePP);hingeFolder.addBinding(PP,'restAngle',{min:90,max:180,step:1,label:'rest angle deg'});hingeFolder.addBinding(sim,'hingeK',{readonly:true,label:'K theta',format:v=>v.toFixed(5)});hingeFolder.addBinding(sim,'hingeI',{readonly:true,label:'I mm4',format:v=>v.toFixed(6)});hingeFolder.addButton({title:'RESET 0.35 / 1.20 / 8.00',label:'nominal'}).on('click',()=>{PP.t_mm=.35;PP.L_mm=1.2;PP.W_mm=8;PP.restAngle=180;updatePP();pane.refresh();toast('PP hinge restored to true production dimensions.');});
+    const fabricFolder=pane.addFolder({title:'RIPSTOP NYLON MEMBRANE',expanded:false});
+    fabricFolder.addBinding(FABRIC,'preStrain',{min:0,max:.12,step:.005,label:'pre-strain e0'});
+    fabricFolder.addBinding(FABRIC,'damping',{min:0,max:40,step:.5,label:'damping N s/m'});
+    fabricFolder.addBinding(FABRIC,'cpBack',{min:-1,max:0,step:.05,label:'Cp leeward'});
+    fabricFolder.addBinding(FABRIC,'iterations',{min:1,max:12,step:1,label:'solver iters'});
+    fabricFolder.addBinding(CFG,'panelBulge',{min:0,max:.05,step:.002,label:'panel fullness m'});
+    fabricFolder.addBinding(CFG,'ribCamber',{min:0,max:.12,step:.004,label:'rib camber m'});
+    fabricFolder.addBinding(FABRIC,'kStretch',{readonly:true,label:'K stretch N/m',format:v=>v.toFixed(0)});
+    fabricFolder.addBinding(FABRIC,'kShear',{readonly:true,label:'K shear N/m',format:v=>v.toFixed(0)});
+    fabricFolder.addBinding(FABRIC,'kBend',{readonly:true,label:'K bend N/m',format:v=>v.toFixed(0)});
+    const viewFolder=pane.addFolder({title:'VIEW',expanded:false});viewFolder.addBinding(ui,'view',{label:'render',options:{STANDARD:'standard',WIREFRAME:'wireframe',STRESS:'stress'}}).on('change',e=>setView(e.value));viewFolder.addBinding(sim,'backend',{readonly:true,label:'backend'});viewFolder.addBinding(sim,'substeps',{readonly:true,label:'substeps'});
+    $('pitchInput').addEventListener('input',e=>$('pitchOut').textContent=`${e.target.value} deg`);$('yawInput').addEventListener('input',e=>$('yawOut').textContent=`${e.target.value} deg`);
+    $('startBtn').addEventListener('click',()=>{try{buildUmbrella(+$('pitchInput').value,+$('yawInput').value);$('startup').classList.add('hidden');toast('Simulation initialized. Optional modules load only in the background.');}catch(error){console.error(error);toast(`Initialization error: ${error.message}`,true);}});
+    function updateHUD(fps){const wind=sim.wind.length();$('windRead').textContent=wind.toFixed(1);$('windBar').style.width=`${clamp(wind,0,100)}%`;$('stressRead').textContent=sim.maxStressMPa.toFixed(2);$('damageRead').textContent=`${sim.damageIndex.toFixed(1)} / 10`;const color=rampRGB((sim.damageIndex-1)/9),css=`rgb(${color.join(',')})`;$('damageRead').style.color=css;$('damageRead').style.borderColor=css;$('stateRead').textContent=sim.status;$('stateDot').className=`dot${sim.broken?(sim.broken===CFG.ribs?' fail':' warn'):''}`;$('fpsRead').textContent=`${fps.toFixed(0)} FPS`;$('triRead').textContent=`${renderer.info.render.triangles.toLocaleString()} TRI`;}
+
+    /* Optional libraries begin only after the application is interactive. */
+    function loadOptionalModules(){
+      import('https://esm.sh/chroma-js@2.6.0').then(m=>refreshLUT(m.default||m)).catch(()=>{});
+      import('https://esm.sh/three-mesh-bvh@0.7.8?external=three').then(m=>{THREE.BufferGeometry.prototype.computeBoundsTree=m.computeBoundsTree;THREE.BufferGeometry.prototype.disposeBoundsTree=m.disposeBoundsTree;THREE.Mesh.prototype.raycast=m.acceleratedRaycast;if(canopy&&!canopy.geometry.boundsTree)canopy.geometry.computeBoundsTree();}).catch(()=>{});
+      import('https://esm.sh/@dimforge/rapier3d-compat@0.14.0').then(async m=>{const R=m.default||m;await R.init();sim.backend='Native core + Rapier ready';}).catch(()=>{sim.backend='Native analytic';});
+    }
+    if('requestIdleCallback' in window)requestIdleCallback(loadOptionalModules,{timeout:3500});else setTimeout(loadOptionalModules,1600);
+    addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+    refreshRibDots();
+    let previousTime=performance.now()/1000,accumulator=0,fpsEMA=60,hudClock=0;
+    function animate(){requestAnimationFrame(animate);const now=performance.now()/1000;let dt=Math.min(.08,now-previousTime);previousTime=now;fpsEMA+=((1/Math.max(dt,.001))-fpsEMA)*.05;accumulator+=dt;if(sim.built&&sim.running){let steps=0;while(accumulator>=FIXED_DT&&steps<4){fixedStep();accumulator-=FIXED_DT;steps++;}if(steps===4&&accumulator>=FIXED_DT)accumulator=0;}updateDebris(dt);updateParticles(dt);updateWindArrow();controls.update();renderer.render(scene,camera);hudClock+=dt;if(hudClock>.12){updateHUD(fpsEMA);pane.refresh();hudClock=0;}}
+    animate();
+  </script>
+</body>
+</html>
